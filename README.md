@@ -1,6 +1,6 @@
 # Distributed Systems Portfolio: LLM Gateway & Raft KV Store
 
-This repository contains the complete implementation of two production-grade distributed systems designed to demonstrate Amazon SDE / systems engineering capabilities:
+This repository contains the complete implementation of two distributed systems:
 
 1. **Part 1: Hybrid LLM Gateway** (`llm-gateway/`) — Intelligent reverse proxy routing between local quantised models and cloud LLMs, equipped with an atomic Redis token-bucket rate limiter, semantic cache (FAISS + MiniLM), bounded queue backpressure, circuit breakers, and Prometheus/Grafana observability.
 2. **Part 2: Distributed Raft Key-Value Store** (`raft-kv/`) — Complete Raft consensus algorithm built from scratch in Go, featuring leader election, log replication, persistent write-ahead logging (WAL) with `fsync`, snapshots/compaction, client request deduplication, and an in-memory fault-injection test harness.
@@ -139,17 +139,27 @@ go test -v -run TestConcurrentLinearizability ./tests/...
 
 ---
 
-## Measured Benchmark Numbers & Resume Bullets
+## Benchmarks (measured)
 
-### Production Resume Bullets
-* **Hybrid LLM Gateway:**
-  > "Architected and built an asynchronous hybrid LLM Gateway in Python (FastAPI, Redis, FAISS, Docker) that intelligently routes requests between a quantized on-device model and cloud LLMs using rule-based, learned, and cascade routing, reducing cloud API invocations by **48%** while maintaining answer fidelity."
-  > "Engineered an in-memory semantic cache using FAISS cosine similarity and an atomic Redis token-bucket rate limiter via Lua scripts, achieving a **34% cache hit rate** and **sub-12ms p95 latency** under concurrent load."
-  > "Implemented bounded-queue backpressure, circuit breaker state machines, and exponential backoff with jitter to maintain 99.9% availability during simulated upstream provider outages."
+### LLM Gateway
+60 requests, 8 concurrent clients, in-process run without Redis.
+- Throughput: 120.71 req/s
+- Latency: p50 5.12 ms, p95 305.68 ms, p99 386.70 ms
+- Cloud traffic: 1 of 60 requests (1.7%), routed by rule-based heuristics
+- Cache hit rate in this benchmark: 0% (every prompt was unique)
+- Cache hits under 2 ms were observed in manual tests with paraphrased prompts
 
-* **Raft Key-Value Store:**
-  > "Implemented the Raft distributed consensus protocol from scratch in Go (leader election, log replication, snapshot compaction, and WAL persistence with fsync) backing a fault-tolerant replicated key-value store."
-  > "Designed an in-memory network fault-injection test harness to verify cluster linearizability, split-brain immunity, and seamless leader failover (<350ms) across network partitions and node crashes."
+### Raft KV Store
+3-node and 5-node clusters, 6 of 6 tests passing in 6.41 s.
+- Leader failover: about 0.30 s
+- 5-node partition and heal: pass, 1.09 s
+- Crash and WAL recovery: pass, 0.54 s
+- Concurrent operations: 50 operations from 5 clients, all passed
+
+### Limitations
+- The gateway benchmark is small (60 requests) and does not measure answer quality, so the cloud-call reduction is not a quality-adjusted figure.
+- The gateway benchmark did not include Redis or the rate limiter.
+- The Raft tests run on a simulated in-memory network, not on separate machines.
 
 ---
 
@@ -159,7 +169,7 @@ go test -v -run TestConcurrentLinearizability ./tests/...
 A token bucket permits short bursts of traffic up to the bucket's capacity while strictly bounding the average throughput to the refill rate. In Redis, checking tokens and updating the timestamp in two separate commands creates a race condition (Time-Of-Check to Time-Of-Use). We guarantee atomicity by packaging the calculation inside a single Redis Lua script (`EVALSHA`), which runs in a single-threaded atomic execution context inside Redis.
 
 ### 2. How do you tune the semantic cache threshold, and what happens on false hits?
-We measure cosine similarity of normalized MiniLM vectors using FAISS inner product. A threshold of `0.90` is selected through receiver operating characteristic (ROC) analysis on a benchmark dataset of paraphrase pairs vs. distinct queries. On a false hit, a user receives an unrelated answer. We mitigate this through:
+We measure cosine similarity of normalized MiniLM vectors using FAISS inner product. The 0.90 threshold was chosen manually and tested on a small set of example prompts. On a false hit, a user receives an unrelated answer. We mitigate this through:
 1. Strict per-client tenant namespacing so one client never accesses another's cached data.
 2. Regex exclusions for dynamic or sensitive inputs (passwords, tokens, stock prices, timestamps).
 3. Client-controlled cache bypass headers (`no_cache=true`).
@@ -169,4 +179,3 @@ Raft's election restriction states that a follower only votes for a candidate wh
 1. If the last entries have different terms, the candidate with the larger term is more up to date.
 2. If the last entries have the same term, the candidate with the longer log (larger index) is more up to date.
 Since committing an entry requires replication on a majority of nodes, and electing a leader also requires votes from a majority of nodes, the majority sets must intersect by at least one node. That intersecting node will refuse to vote for any candidate missing the committed entry, ensuring no candidate without all committed entries can ever win an election.
-
