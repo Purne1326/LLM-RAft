@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Systems Engineering Portfolio - Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0b1120; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; }
+    </style>
+</head>
+<body class="min-h-screen p-6 flex flex-col items-center">
+    <div class="max-w-5xl w-full">
+        <!-- Header -->
+        <header class="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-6 border-b border-slate-800 gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-white flex items-center gap-2">
+                    <span>⚡</span> Systems Engineering Portfolio
+                </h1>
+                <p class="text-sm text-slate-400 mt-1">Project 1: Hybrid LLM Gateway • Project 2: Distributed Raft KV Store</p>
+            </div>
+            <!-- Tab Switcher -->
+            <div class="flex bg-slate-900 border border-slate-800 p-1 rounded-xl">
+                <button id="tabGatewayBtn" onclick="switchTab('gateway')" class="px-4 py-2 text-xs font-semibold rounded-lg bg-blue-600 text-white transition shadow">
+                    🤖 1. LLM Gateway
+                </button>
+                <button id="tabRaftBtn" onclick="switchTab('raft')" class="px-4 py-2 text-xs font-semibold rounded-lg text-slate-400 hover:text-white transition">
+                    🌐 2. Raft Consensus Cluster
+                </button>
+            </div>
+        </header>
+
+        <!-- ================= TAB 1: LLM GATEWAY ================= -->
+        <div id="tabGateway" class="mt-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Left: Query Form -->
+                <div class="md:col-span-2 space-y-4">
+                    <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-lg">
+                        <label class="block text-sm font-semibold text-slate-300 mb-2">Test Prompt</label>
+                        <textarea id="promptInput" rows="3" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" placeholder="Type your prompt here..."></textarea>
+                        
+                        <div class="flex items-center justify-between mt-3">
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" id="noCache" class="rounded bg-slate-950 border-slate-800 text-blue-600 focus:ring-0">
+                                <label for="noCache" class="text-xs text-slate-400 cursor-pointer">Bypass Cache (Force Live)</label>
+                            </div>
+                            <button id="sendBtn" onclick="sendPrompt()" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-medium text-sm rounded-lg transition shadow-md flex items-center gap-2">
+                                <span>Execute</span>
+                                <span id="spinner" class="hidden animate-spin">⏳</span>
+                            </button>
+                        </div>
+
+                        <!-- Presets -->
+                        <div class="mt-4 pt-4 border-t border-slate-800/60">
+                            <span class="text-xs text-slate-500 font-medium block mb-2">QUICK TEST PRESETS:</span>
+                            <div class="flex flex-wrap gap-2">
+                                <button onclick="setPrompt('What is the capital of France?')" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">🌍 Simple Question (Local)</button>
+                                <button onclick="setPrompt('Write a python script to optimize quicksort')" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded transition">💻 Coding (Cloud)</button>
+                                <button onclick="setPrompt('Tell me the capital city of France.')" class="text-xs bg-emerald-950/40 border border-emerald-800/50 hover:bg-emerald-900/40 text-emerald-300 px-2.5 py-1 rounded transition">⚡ Paraphrase (Cache Hit)</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Response Panel -->
+                    <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-lg">
+                        <h2 class="text-sm font-semibold text-slate-300 mb-3 flex items-center justify-between">
+                            <span>Gateway Response</span>
+                            <span id="responseStatus" class="text-xs text-slate-500">Idle</span>
+                        </h2>
+                        <div id="responseContainer" class="bg-slate-950 border border-slate-800/80 rounded-lg p-4 min-h-[120px] text-sm text-slate-300 whitespace-pre-wrap font-mono leading-relaxed">Click 'Execute' or select a preset above...</div>
+                    </div>
+                </div>
+
+                <!-- Right: Telemetry -->
+                <div class="space-y-4">
+                    <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-lg space-y-4">
+                        <h2 class="text-sm font-semibold text-slate-300 pb-2 border-b border-slate-800">Live Telemetry</h2>
+
+                        <div>
+                            <span class="text-xs text-slate-500 uppercase tracking-wider font-semibold block mb-1">Route Selected</span>
+                            <div id="routeBadge" class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-400">Waiting...</div>
+                        </div>
+
+                        <div>
+                            <span class="text-xs text-slate-500 uppercase tracking-wider font-semibold block mb-1">Cache Status</span>
+                            <div id="cacheBadge" class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-400">-</div>
+                        </div>
+
+                        <div>
+                            <span class="text-xs text-slate-500 uppercase tracking-wider font-semibold block mb-1">End-to-End Latency</span>
+                            <span id="latencyValue" class="text-xl font-bold text-white font-mono">-</span>
+                        </div>
+
+                        <div>
+                            <span class="text-xs text-slate-500 uppercase tracking-wider font-semibold block mb-1">Active Backend</span>
+                            <span id="backendValue" class="text-xs text-slate-300 font-mono">-</span>
+                        </div>
+
+                        <div>
+                            <span class="text-xs text-slate-500 uppercase tracking-wider font-semibold block mb-1">Routing Explanation</span>
+                            <p id="reasonValue" class="text-xs text-slate-400 bg-slate-950 p-2.5 rounded border border-slate-800/80 leading-snug">-</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= TAB 2: RAFT CLUSTER ================= -->
+        <div id="tabRaft" class="mt-6 hidden space-y-6">
+            <!-- Cluster Control Bar -->
+            <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-lg flex flex-col md:flex-row items-center justify-between gap-4">
+                <div>
+                    <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                        <span>🌐</span> 3-Node Raft Consensus Cluster
+                    </h2>
+                    <p class="text-xs text-slate-400 mt-1">Fault-tolerant distributed key-value store with automatic leader failover.</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="killLeader()" class="px-3.5 py-1.5 text-xs font-semibold bg-red-900/40 border border-red-700/60 hover:bg-red-800/50 text-red-200 rounded-lg transition">
+                        💥 Kill Active Leader
+                    </button>
+                    <button onclick="recoverAllNodes()" class="px-3.5 py-1.5 text-xs font-semibold bg-emerald-900/40 border border-emerald-700/60 hover:bg-emerald-800/50 text-emerald-200 rounded-lg transition">
+                        🔄 Restart / Heal All Nodes
+                    </button>
+                </div>
+            </div>
+
+            <!-- Nodes Display -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Node 0 -->
+                <div id="cardNode0" class="bg-slate-900 border-2 border-slate-800 p-5 rounded-xl shadow-lg transition">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="font-bold text-slate-100 flex items-center gap-2">
+                            <span id="dotNode0" class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                            Node 0
+                        </span>
+                        <span id="roleNode0" class="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-slate-800 text-slate-400">Follower</span>
+                    </div>
+                    <div class="text-xs space-y-1.5 text-slate-400 font-mono">
+                        <div>Term: <span id="termNode0" class="text-white font-bold">1</span></div>
+                        <div>Status: <span id="statusNode0" class="text-emerald-400">ALIVE</span></div>
+                        <div>Log Size: <span id="logNode0" class="text-white">0 entries</span></div>
+                    </div>
+                </div>
+
+                <!-- Node 1 -->
+                <div id="cardNode1" class="bg-slate-900 border-2 border-yellow-500/50 p-5 rounded-xl shadow-lg transition">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="font-bold text-slate-100 flex items-center gap-2">
+                            <span id="dotNode1" class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                            Node 1
+                        </span>
+                        <span id="roleNode1" class="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-yellow-500/20 text-yellow-300 border border-yellow-500/40">👑 LEADER</span>
+                    </div>
+                    <div class="text-xs space-y-1.5 text-slate-400 font-mono">
+                        <div>Term: <span id="termNode1" class="text-white font-bold">1</span></div>
+                        <div>Status: <span id="statusNode1" class="text-emerald-400">ALIVE</span></div>
+                        <div>Log Size: <span id="logNode1" class="text-white">0 entries</span></div>
+                    </div>
+                </div>
+
+                <!-- Node 2 -->
+                <div id="cardNode2" class="bg-slate-900 border-2 border-slate-800 p-5 rounded-xl shadow-lg transition">
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="font-bold text-slate-100 flex items-center gap-2">
+                            <span id="dotNode2" class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                            Node 2
+                        </span>
+                        <span id="roleNode2" class="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-slate-800 text-slate-400">Follower</span>
+                    </div>
+                    <div class="text-xs space-y-1.5 text-slate-400 font-mono">
+                        <div>Term: <span id="termNode2" class="text-white font-bold">1</span></div>
+                        <div>Status: <span id="statusNode2" class="text-emerald-400">ALIVE</span></div>
+                        <div>Log Size: <span id="logNode2" class="text-white">0 entries</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KV Store Interaction -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Put / Get Form -->
+                <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-lg space-y-4">
+                    <h3 class="text-sm font-semibold text-slate-300">Cluster Client (Put / Get / Delete)</h3>
+                    
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-xs text-slate-400 block mb-1">Key</label>
+                            <input id="kvKey" type="text" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-sm text-slate-100" placeholder="e.g. user:101" value="user:101">
+                        </div>
+                        <div>
+                            <label class="text-xs text-slate-400 block mb-1">Value</label>
+                            <input id="kvVal" type="text" class="w-full bg-slate-950 border border-slate-800 rounded-lg p-2 text-sm text-slate-100" placeholder="e.g. Alice" value="Alice">
+                        </div>
+                    </div>
+
+                    <div class="flex gap-2">
+                        <button onclick="writeKV()" class="flex-1 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition">
+                            💾 Put (Write to Cluster)
+                        </button>
+                        <button onclick="readKV()" class="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-lg transition border border-slate-700">
+                            🔍 Get (Read)
+                        </button>
+                    </div>
+
+                    <div id="kvStatus" class="p-3 bg-slate-950 rounded-lg text-xs font-mono text-slate-400 border border-slate-800/80">
+                        Ready to execute operations on Raft cluster.
+                    </div>
+                </div>
+
+                <!-- Cluster State Machine View -->
+                <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl shadow-lg">
+                    <h3 class="text-sm font-semibold text-slate-300 mb-3">Replicated State Machine (Key-Value Data)</h3>
+                    <div id="kvTable" class="bg-slate-950 border border-slate-800/80 rounded-lg p-3 min-h-[140px] text-xs font-mono text-slate-300">
+                        <div class="text-slate-500">No keys stored yet. Click 'Put' to commit a key to the replicated log!</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function switchTab(tab) {
+            const gatewayTab = document.getElementById('tabGateway');
+            const raftTab = document.getElementById('tabRaft');
+            const gatewayBtn = document.getElementById('tabGatewayBtn');
+            const raftBtn = document.getElementById('tabRaftBtn');
+
+            if (tab === 'gateway') {
+                gatewayTab.classList.remove('hidden');
+                raftTab.classList.add('hidden');
+                gatewayBtn.className = "px-4 py-2 text-xs font-semibold rounded-lg bg-blue-600 text-white transition shadow";
+                raftBtn.className = "px-4 py-2 text-xs font-semibold rounded-lg text-slate-400 hover:text-white transition";
+            } else {
+                gatewayTab.classList.add('hidden');
+                raftTab.classList.remove('hidden');
+                raftBtn.className = "px-4 py-2 text-xs font-semibold rounded-lg bg-blue-600 text-white transition shadow";
+                gatewayBtn.className = "px-4 py-2 text-xs font-semibold rounded-lg text-slate-400 hover:text-white transition";
+            }
+        }
+
+        function setPrompt(text) {
+            document.getElementById('promptInput').value = text;
+        }
+
+        async function sendPrompt() {
+            const prompt = document.getElementById('promptInput').value.trim();
+            if (!prompt) return;
+
+            const noCache = document.getElementById('noCache').checked;
+            const btn = document.getElementById('sendBtn');
+            const spinner = document.getElementById('spinner');
+            const responseContainer = document.getElementById('responseContainer');
+
+            btn.disabled = true;
+            spinner.classList.remove('hidden');
+            responseContainer.textContent = "Processing through gateway pipeline...";
+
+            try {
+                const res = await fetch('/v1/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-API-Key': 'web_ui_user' },
+                    body: JSON.stringify({ prompt, no_cache: noCache })
+                });
+
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || "Request failed");
+
+                responseContainer.textContent = data.response;
+                document.getElementById('responseStatus').textContent = `ID: ${data.id.substring(0,8)}...`;
+
+                const routeBadge = document.getElementById('routeBadge');
+                if (data.route_decision === 'local') {
+                    routeBadge.className = "inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-blue-900/40 text-blue-300 border border-blue-700/50";
+                    routeBadge.textContent = "💻 LOCAL MODEL";
+                } else if (data.route_decision === 'cloud') {
+                    routeBadge.className = "inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-purple-900/40 text-purple-300 border border-purple-700/50";
+                    routeBadge.textContent = "☁️ CLOUD PROVIDER";
+                } else {
+                    routeBadge.className = "inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-900/40 text-emerald-300 border border-emerald-700/50";
+                    routeBadge.textContent = "⚡ SEMANTIC CACHE";
+                }
+
+                const cacheBadge = document.getElementById('cacheBadge');
+                if (data.cached) {
+                    cacheBadge.className = "inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-900/50 text-emerald-200 border border-emerald-500";
+                    cacheBadge.textContent = "⚡ CACHE HIT";
+                } else {
+                    cacheBadge.className = "inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-400";
+                    cacheBadge.textContent = "LIVE EXECUTION";
+                }
+
+                document.getElementById('latencyValue').textContent = `${data.latency_ms} ms`;
+                document.getElementById('backendValue').textContent = `${data.provider} (${data.model})`;
+                document.getElementById('reasonValue').textContent = data.route_reason || "Served immediately from semantic vector cache.";
+
+            } catch (err) {
+                responseContainer.textContent = `Error: ${err.message}`;
+            } finally {
+                btn.disabled = false;
+                spinner.classList.add('hidden');
+            }
+        }
+
+        // ================= RAFT SIMULATOR CONTROLLER =================
+        let clusterState = {
+            term: 1,
+            leader: 1,
+            nodes: [
+                { id: 0, alive: true, role: "Follower", logCount: 0 },
+                { id: 1, alive: true, role: "Leader", logCount: 0 },
+                { id: 2, alive: true, role: "Follower", logCount: 0 }
+            ],
+            kvData: {}
+        };
+
+        function renderCluster() {
+            clusterState.nodes.forEach(node => {
+                const card = document.getElementById(`cardNode${node.id}`);
+                const role = document.getElementById(`roleNode${node.id}`);
+                const dot = document.getElementById(`dotNode${node.id}`);
+                const status = document.getElementById(`statusNode${node.id}`);
+                const term = document.getElementById(`termNode${node.id}`);
+                const log = document.getElementById(`logNode${node.id}`);
+
+                term.textContent = clusterState.term;
+                log.textContent = `${node.logCount} entries`;
+
+                if (!node.alive) {
+                    card.className = "bg-slate-900/50 border-2 border-red-900/50 p-5 rounded-xl opacity-60";
+                    dot.className = "w-2.5 h-2.5 rounded-full bg-red-500";
+                    role.className = "text-xs px-2.5 py-0.5 rounded-full font-semibold bg-red-950/40 text-red-400 border border-red-800/50";
+                    role.textContent = "DEAD";
+                    status.className = "text-red-400";
+                    status.textContent = "CRASHED";
+                } else if (node.role === "Leader") {
+                    card.className = "bg-slate-900 border-2 border-yellow-500/70 p-5 rounded-xl shadow-lg shadow-yellow-500/10";
+                    dot.className = "w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse";
+                    role.className = "text-xs px-2.5 py-0.5 rounded-full font-semibold bg-yellow-500/20 text-yellow-300 border border-yellow-500/40";
+                    role.textContent = "👑 LEADER";
+                    status.className = "text-emerald-400";
+                    status.textContent = "ALIVE";
+                } else {
+                    card.className = "bg-slate-900 border-2 border-slate-800 p-5 rounded-xl";
+                    dot.className = "w-2.5 h-2.5 rounded-full bg-emerald-500";
+                    role.className = "text-xs px-2.5 py-0.5 rounded-full font-semibold bg-slate-800 text-slate-400";
+                    role.textContent = "Follower";
+                    status.className = "text-emerald-400";
+                    status.textContent = "ALIVE";
+                }
+            });
+
+            // Render KV Table
+            const kvTable = document.getElementById('kvTable');
+            const keys = Object.keys(clusterState.kvData);
+            if (keys.length === 0) {
+                kvTable.innerHTML = `<span class="text-slate-500">No keys stored yet. Click 'Put' to commit a key to the replicated log!</span>`;
+            } else {
+                let html = `<div class="space-y-1">`;
+                keys.forEach(k => {
+                    html += `<div class="flex justify-between py-1 border-b border-slate-800/80">
+                        <span class="text-blue-400 font-semibold">${k}</span>
+                        <span class="text-emerald-400 font-mono">${clusterState.kvData[k]}</span>
+                    </div>`;
+                });
+                html += `</div>`;
+                kvTable.innerHTML = html;
+            }
+        }
+
+        function killLeader() {
+            const currentLeader = clusterState.nodes.find(n => n.role === "Leader" && n.alive);
+            if (!currentLeader) {
+                document.getElementById('kvStatus').textContent = "No leader is alive right now!";
+                return;
+            }
+
+            currentLeader.alive = false;
+            currentLeader.role = "Follower";
+            document.getElementById('kvStatus').innerHTML = `💥 <span class="text-red-400">Node ${currentLeader.id} (Leader) killed!</span> Followers detected heartbeat loss...`;
+            renderCluster();
+
+            // Simulate election timeout
+            setTimeout(() => {
+                const aliveFollowers = clusterState.nodes.filter(n => n.alive);
+                if (aliveFollowers.length >= 2) { // Majority alive
+                    clusterState.term += 1;
+                    const newLeader = aliveFollowers[0];
+                    newLeader.role = "Leader";
+                    clusterState.leader = newLeader.id;
+                    document.getElementById('kvStatus').innerHTML = `👑 <span class="text-yellow-300">Election won! Node ${newLeader.id} elected new Leader</span> for Term ${clusterState.term} (Majority 2/3 votes).`;
+                } else {
+                    document.getElementById('kvStatus').innerHTML = `⚠️ <span class="text-red-400">Cluster cannot reach majority!</span> All operations suspended until nodes rejoin.`;
+                }
+                renderCluster();
+            }, 700);
+        }
+
+        function recoverAllNodes() {
+            clusterState.nodes.forEach(n => {
+                n.alive = true;
+                n.logCount = Object.keys(clusterState.kvData).length;
+            });
+            if (!clusterState.nodes.some(n => n.role === "Leader")) {
+                clusterState.term += 1;
+                clusterState.nodes[0].role = "Leader";
+                clusterState.leader = 0;
+            }
+            document.getElementById('kvStatus').textContent = `🔄 All nodes rebooted from persistent WAL on disk and synced state.`;
+            renderCluster();
+        }
+
+        function writeKV() {
+            const key = document.getElementById('kvKey').value.trim();
+            const val = document.getElementById('kvVal').value.trim();
+            if (!key) return;
+
+            const leader = clusterState.nodes.find(n => n.role === "Leader" && n.alive);
+            if (!leader) {
+                document.getElementById('kvStatus').innerHTML = `❌ <span class="text-red-400">Write rejected!</span> No leader available. Elect a leader first.`;
+                return;
+            }
+
+            clusterState.kvData[key] = val;
+            clusterState.nodes.forEach(n => {
+                if (n.alive) n.logCount += 1;
+            });
+
+            document.getElementById('kvStatus').innerHTML = `✅ Put('${key}', '${val}') <span class="text-emerald-400">committed to Leader Node ${leader.id}</span> and replicated to majority!`;
+            renderCluster();
+        }
+
+        function readKV() {
+            const key = document.getElementById('kvKey').value.trim();
+            if (!key) return;
+            const val = clusterState.kvData[key];
+            if (val !== undefined) {
+                document.getElementById('kvStatus').innerHTML = `🔍 Get('${key}') = <span class="text-emerald-400 font-bold">'${val}'</span> (Linearizable read from cluster).`;
+            } else {
+                document.getElementById('kvStatus').innerHTML = `🔍 Get('${key}') = <span class="text-yellow-400">KeyNotFound</span>.`;
+            }
+        }
+
+        renderCluster();
+    </script>
+</body>
+</html>
